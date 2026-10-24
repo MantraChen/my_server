@@ -10,6 +10,7 @@ redir /howielog /howielog/ 308
 handle /howielog/* {
     @devblog_alias host dongyunyanjiusuo.com
     redir @devblog_alias https://dyyjs.com{uri} 308
+    encode zstd gzip
     reverse_proxy 127.0.0.1:4321 {
         header_up X-Forwarded-For {remote_host}
         header_up X-Real-IP {remote_host}
