@@ -1,7 +1,15 @@
-# Add this separate site to the existing Caddy configuration after validating it.
-# Do not replace the server's existing dyyjs.com routes or global options.
-howielog.com {
-    encode zstd gzip
+# Import INSIDE the existing dyyjs.com site block, before its fallback handle.
+# Example: import /etc/caddy/devblog-routes.caddy
+# Keep /howielog in the upstream URI: do not use handle_path or strip_prefix.
+@devblog_home_query {
+    path /howielog
+    expression `{http.request.uri.query} != ""`
+}
+redir @devblog_home_query /howielog/?{query} 308
+redir /howielog /howielog/ 308
+handle /howielog/* {
+    @devblog_alias host dongyunyanjiusuo.com
+    redir @devblog_alias https://dyyjs.com{uri} 308
     reverse_proxy 127.0.0.1:4321 {
         header_up X-Forwarded-For {remote_host}
         header_up X-Real-IP {remote_host}

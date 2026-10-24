@@ -35,13 +35,13 @@ child.stdout.on('data', chunk => { output += chunk; });
 child.stderr.on('data', chunk => { output += chunk; });
 const direct = `http://127.0.0.1:${port}`;
 // Caddy keeps Host and rewrites forwarding headers before calling the loopback app.
-const proxyHeaders = { Host: 'howielog.com', 'X-Forwarded-Host': 'howielog.com',
+const proxyHeaders = { Host: new URL(source.site).host, 'X-Forwarded-Host': new URL(source.site).host,
   'X-Forwarded-Proto': 'https', 'X-Forwarded-For': '198.51.100.7' };
 try {
   let healthy = false;
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
-      const response = await fetch(direct + '/api/health');
+      const response = await fetch(direct + source.base + '/api/health');
       if (response.ok) {
         assert.equal((await response.json()).release, source.commit);
         healthy = true;
@@ -54,16 +54,21 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(healthy, output);
-  const login = (origin) => fetch(direct + '/api/auth/login', {
+  const page = await fetch(direct + source.base + '/', { headers: proxyHeaders });
+  assert.equal(page.status, 200);
+  assert.ok((await page.text()).includes(`rel="canonical" href="${source.site}${source.base}/"`));
+  const login = (origin) => fetch(direct + source.base + '/api/auth/login', {
     method: 'POST', redirect: 'manual', headers: { ...proxyHeaders, Origin: origin, 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
   });
   assert.equal((await login('https://evil.example')).status, 403);
-  const signedIn = await login('https://howielog.com');
+  const signedIn = await login(source.site);
   assert.equal(signedIn.status, 200, await signedIn.clone().text());
   assert.match(signedIn.headers.get('set-cookie'), /HttpOnly; Secure; SameSite=Strict/);
+  assert.ok(signedIn.headers.get('set-cookie').startsWith('howielog_admin_session='));
+  assert.ok(signedIn.headers.get('set-cookie').includes(`Path=${source.base}/;`));
   const cookie = signedIn.headers.get('set-cookie').split(';')[0];
-  const admin = await fetch(direct + '/api/posts', { headers: { ...proxyHeaders, Cookie: cookie } });
+  const admin = await fetch(direct + source.base + '/api/posts', { headers: { ...proxyHeaders, Cookie: cookie } });
   assert.equal(admin.status, 200);
   assert.match(admin.headers.get('strict-transport-security'), /max-age=/);
   assert.match(admin.headers.get('cache-control'), /no-store/);

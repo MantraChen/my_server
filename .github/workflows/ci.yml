@@ -101,8 +101,7 @@ jobs:
       - name: Validate source pin
         id: source
         run: |
-          sha=$(python3 z_my_server/dev-blog/source.py)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          python3 z_my_server/dev-blog/source.py --github-output >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MantraChen/Dev-Blog
@@ -118,6 +117,8 @@ jobs:
         working-directory: .devblog-upstream
         env:
           PUBLIC_RELEASE_ID: ${{ steps.source.outputs.sha }}
+          SITE_URL: ${{ steps.source.outputs.site }}
+          PUBLIC_BASE_PATH: ${{ steps.source.outputs.base }}
         run: |
           npm ci
           npm run verify

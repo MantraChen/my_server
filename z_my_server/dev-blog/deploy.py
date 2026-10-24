@@ -129,7 +129,8 @@ def freeze_tree(path):
 
 def prepare_release(server_sha, source, operation):
     release = BASE / "releases" / server_sha
-    metadata = {"server_commit": server_sha, "upstream_commit": source["commit"]}
+    metadata = {"server_commit": server_sha, "upstream_commit": source["commit"],
+                "site": source["site"], "base": source["base"]}
     if release.exists():
         root_owned(release)
         if release.is_symlink() or json.loads((release / ".devblog-release.json").read_text()) != metadata:
@@ -144,6 +145,7 @@ def prepare_release(server_sha, source, operation):
         shutil.chown(stage, user="devblog-build", group="devblog-build")
         build_env = {"HTTP_PROXY": PROXY, "HTTPS_PROXY": PROXY,
                      "PUBLIC_RELEASE_ID": source["commit"],
+                     "SITE_URL": source["site"], "PUBLIC_BASE_PATH": source["base"],
                      "DATABASE_PATH": str(stage / "verify.db"),
                      "NODE_OPTIONS": "--max-old-space-size=768"}
         as_user("devblog-build", stage, "git", "init", "-q")
@@ -217,11 +219,11 @@ def write_unit(content):
     os.replace(temporary, UNIT)
 
 
-def wait_healthy(expected, attempts=30):
+def wait_healthy(expected, base="", attempts=30):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     for attempt in range(attempts):
         try:
-            with opener.open("http://127.0.0.1:4321/api/health", timeout=2) as response:
+            with opener.open(f"http://127.0.0.1:4321{base}/api/health", timeout=2) as response:
                 payload = json.load(response)
                 if response.status == 200 and payload.get("status") == "ok" and payload.get("release") == expected:
                     return
@@ -249,7 +251,7 @@ def activate(release, source):
         run("systemctl", "daemon-reload")
         run("systemctl", "reset-failed", SERVICE)
         run("systemctl", "start", SERVICE)
-        wait_healthy(source["commit"])
+        wait_healthy(source["commit"], source["base"])
         run("systemctl", "enable", SERVICE)
     except BaseException:
         # Restore code/service state only. Never overwrite new writes with an old DB.
@@ -263,7 +265,7 @@ def activate(release, source):
                 run("systemctl", "reset-failed", SERVICE)
                 run("systemctl", "start", SERVICE)
                 prior = json.loads((previous / ".devblog-release.json").read_text())
-                wait_healthy(prior["upstream_commit"])
+                wait_healthy(prior["upstream_commit"], prior.get("base", ""))
         raise
 
 

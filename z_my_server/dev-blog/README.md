@@ -4,8 +4,8 @@
 
 ## 接入边界
 
-- `source.json` 固定上游完整 commit；本次是 `bea1a01569b312ad1381497c1970fb809ea25594`。不跟随上游 main 自动更新，也不复制一份博客源码到服务器仓库。更新此 pin 仍须 PR、CI 和仓库所有者审核。
-- 保留 `https://howielog.com`、原文章 slug、管理功能、Giscus 和 SQLite。应用有根路径链接和固定 canonical，因此不能直接挂到 `dyyjs.com/blog/`；若另选域名或子路径，应先修改并验证上游应用。
+- `source.json` 固定上游完整 commit；具体 SHA 见该文件，同时固定 `site=https://dyyjs.com`、`base=/howielog`。不跟随上游 main 自动更新，也不复制一份博客源码到服务器仓库。更新此 pin 仍须 PR、CI 和仓库所有者审核。
+- 使用 `https://dyyjs.com/howielog/` 提供完整博客，保留原文章 slug、管理功能、Giscus 和 SQLite。上游已适配资源、页面、接口、canonical、RSS/sitemap 和旧内容链接；无需 howielog.com 的 DNS 切换。
 - Linux + systemd + 现有 Caddy；专用 Node 24.22.1 或同主版本后续补丁。不修改其他组件正在使用的 `/opt/dyyjs-youtube/node24-runtime`。
 - 监听 `127.0.0.1:4321`，数据在 `/var/lib/dyyjs-devblog`，代码在 `/opt/dyyjs-devblog/releases/<my_server commit>`。HTTP 健康检查返回上游博客 commit；部署台账记录服务器仓库 commit，两者不是同一个 SHA。
 - 不启用 Windows webhook，不自动改 DNS、共享 Caddyfile 或其他服务，不自动创建空博客数据库。服务器规格、系统版本、实际负载和备份恢复仍须在目标机确认。
@@ -47,20 +47,26 @@ sudo /usr/local/sbin/deploy-my-server deploy <my_server-full-sha> devblog
 
 ## 部署、验收与回退
 
-1. 旧服务继续运行时，以 `devblog-build` 获取固定源码，在新目录执行 `npm ci`、完整 `npm run verify` 和全依赖审计。构建不接收生产密码或数据库路径。
+1. 旧服务继续运行时，以 `devblog-build` 获取固定源码，在新目录执行 `npm ci`、完整 `npm run verify` 和全依赖审计。`SITE_URL`、`PUBLIC_BASE_PATH` 从 source.json 注入并写入 release 元数据；改变地址必须重新构建。构建不接收生产密码或数据库路径。
 2. 固化为 root 所有的 release；使用数据库一致副本，以 `devblog` 账户演练迁移并检查完整性。失败不会停止旧服务。
-3. 停止旧服务，创建并验证独立备份，再迁移持久数据库；切换 current 和 systemd unit，启动并核对回环健康接口的精确上游 commit。成功才启用开机启动并更新外层部署台账。
+3. 停止旧服务，创建并验证独立备份，再迁移持久数据库；切换 current 和 systemd unit，启动并核对回环 `/howielog/api/health` 的精确上游 commit。成功才启用开机启动并更新外层部署台账。
 4. 迁移、启动或健康检查失败会恢复原 current、unit 和运行状态。总部署器也快照代码链接和 unit，处理后续其他组件失败；**两层回退都不覆盖数据库**。数据库备份在持久目录中保留，需制定异机备份和保留策略，避免长期累积占满磁盘。
 
-在现有 Caddyfile 中**追加** `Caddyfile.example` 的独立站点段，保留已有全局选项和 dyyjs.com 路由；先 `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`，再 reload。此操作需人工执行，部署器不重载共享代理。该片段假设用户直接连接 Caddy；若前面另有 CDN/代理，须单独验证可信代理配置及真实 IP 限流。只对公网开放已有 80/443，4321 保持回环监听。
+在现有 Caddyfile 的 **dyyjs.com 站点块内部**、兜底 `handle` 之前导入 `Caddyfile.example`（例如复制为 `/etc/caddy/devblog-routes.caddy`，再加入 `import /etc/caddy/devblog-routes.caddy`）。这是路由片段，不是完整站点配置；保留全局选项、首页及其他服务，不能用它覆盖共享 Caddyfile。使用 `handle /howielog/*` 保留前缀，不可改为 `handle_path` 或删除前缀。`/howielog` 308 跳到 `/howielog/`，保留查询参数；共享站点的 dongyunyanjiusuo.com 别名仅在博客路径跳到 dyyjs.com，统一登录和 canonical。
 
-正式改 DNS 前在新机或测试客户端使用域名解析覆盖验证 HTTPS、登录、搜索、文章阅读、评论配置、反应统计、旧链接、RSS/sitemap 与备份恢复。证书签发条件需由服务器所有者安排；不得用跳过 TLS 验证当作上线验收。应用完整验收后再切换 DNS，期间避免两套站点同时写入。
+先 `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`，再 reload；部署器不重载共享代理。片段假设用户直接连接 Caddy；若前面另有 CDN/代理，须单独验证可信代理和真实 IP 限流。只开放已有 80/443，4321 保持回环监听。`robots.txt.fragment` 须合并到现有根 `/robots.txt` 的 `User-agent: *` 规则组，保留其他组件的规则；子路径的 `/howielog/robots.txt` 仅供查看，不会取代根目录爬虫规则。
+
+正式开放入口前验证 `https://dyyjs.com/howielog/` 的 TLS、文章、登录、搜索、反应统计、RSS/sitemap 和数据库恢复。既有文章变为 `/howielog/blog/<原 slug>`；旧正文中的 howielog.com 链接展示时转换，Giscus 使用去掉前缀的原 pathname 关联评论。如 Giscus 仓库设置过来源白名单，应允许 dyyjs.com，并实际检查已有评论；更换域名后管理员需要重新登录。
+
+Cookie 使用博客专属名称及 `/howielog/` Path，主题存储也使用专属键。子路径不是浏览器的同源安全边界，共享域名上的应用需要相互信任。现有首页 PWA 使用静态资源白名单，不接管博客路径；后续修改 Service Worker 或 CDN 时，继续排除 `/howielog/admin`、`/howielog/api/*`，不可缓存认证响应或给博客导航返回首页离线页。
+
+入口切换期间暂停旧站写入、同步最终一致备份，避免两套站点同时写入。此次不依赖旧域名提供服务；外部书签中的 howielog.com 地址不会因部署自动跳转，只有旧域名仍可访问时才能另行配置 301/308。
 
 已部署的服务器仓库 SHA 可通过现有 `rollback <sha> devblog` 回到其**已验证且仍保留在本机**的博客 release。这不是数据库降级：仅对兼容当前 schema 的旧代码使用。新的破坏性迁移必须另行设计恢复方案。上线后旧机已落后的数据库不能直接重新启用；如需切回旧机，先停止新机写入并迁移最新一致备份。
 
 ## 验证范围
 
-本地部署控制测试覆盖源码锁定、env 限制、WAL 一致备份、副本迁移、构建/演练失败不停止旧服务、迁移/启动/健康失败恢复服务、数据库新写入保留、初次失败清理、hardlink 快照兼容及健康版本核对。Linux CI 另外运行固定上游的完整检查、构建和真实 HTTP 冒烟测试；`tests/smoke-proxy.mjs` 验证 Caddy 转发头对应的 HTTPS 登录、Secure Cookie、CSRF 和精确版本健康检查。
+本地部署控制测试覆盖源码锁定、env 限制、WAL 一致备份、副本迁移、构建/演练失败不停止旧服务、迁移/启动/健康失败恢复服务、数据库新写入保留、初次失败清理、hardlink 快照兼容及健康版本核对。Linux CI 另外运行固定上游的完整检查、构建和真实 HTTP 冒烟测试；`tests/smoke-proxy.mjs` 验证 Caddy 转发头对应的子路径 HTTPS 登录、限定 Cookie Path、canonical、CSRF 和精确版本健康检查。
 
 本次准备发生在 Windows 上，systemctl/runuser 权限及 Linux symlink 切换仍须 Linux CI 和目标机演练；模拟控制流程测试不代表已经完成生产部署。
 

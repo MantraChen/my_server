@@ -64,6 +64,27 @@ class DeploymentTests(unittest.TestCase):
         manifest.write_text(json.dumps(self.source))
         self.assertEqual(read_source(manifest), self.source)
 
+    def test_site_and_base_reject_unsafe_or_ambiguous_configuration(self):
+        manifest = self.root / "source.json"
+        for field, values in {
+            "site": ["http://dyyjs.com", "https://dyyjs.com/howielog", "https://user@dyyjs.com", "https://dyyjs.com\nextra=value"],
+            "base": ["/", "//host", "/howielog/", "/../howielog", "/howielog?x=1", "howielog"],
+        }.items():
+            for value in values:
+                manifest.write_text(json.dumps({**self.source, field: value}))
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    read_source(manifest)
+
+    def test_cached_release_cannot_use_another_base(self):
+        release = self.root / "releases" / ("b" * 40)
+        release.mkdir(parents=True)
+        (release / ".devblog-release.json").write_text(json.dumps({
+            "server_commit": "b" * 40, "upstream_commit": self.source["commit"],
+            "site": self.source["site"], "base": "/wrong",
+        }))
+        with patch.object(deploy, "root_owned"), self.assertRaisesRegex(RuntimeError, "reviewed source"):
+            deploy.prepare_release("b" * 40, self.source, "rollback")
+
     def test_env_cannot_override_database_host_or_execute_shell(self):
         value = "ADMIN_PASSWORD_HASH=" + "$2b$12$" + "a" * 53
         deploy.validate_env(value + "\n# comment\n")
@@ -145,12 +166,14 @@ class DeploymentTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "failed"):
                     deploy.activate(self.new, self.source)
                 self.assertEqual(current.call_args.args[0], self.old if existing else None)
+                if existing:
+                    health.assert_any_call("a" * 40, "")  # Legacy root deployment restored.
                 self.assertEqual(self.unit.read_bytes() if self.unit.exists() else None,
                                  b"previous unit" if existing else None)
             else:
                 deploy.activate(self.new, self.source)
                 self.assertEqual(current.call_args.args[0], self.new)
-                health.assert_called_once_with(self.source["commit"])
+                health.assert_called_once_with(self.source["commit"], self.source["base"])
                 self.assertIn(("systemctl", "enable", deploy.SERVICE), calls)
         with connection(self.db) as database:
             rows = database.execute("SELECT slug FROM posts").fetchall()
@@ -193,7 +216,8 @@ class DeploymentTests(unittest.TestCase):
         opener.open.return_value = response
         with patch.object(deploy.urllib.request, "build_opener", return_value=opener):
             with self.assertRaisesRegex(RuntimeError, "pinned upstream"):
-                deploy.wait_healthy(self.source["commit"], attempts=1)
+                deploy.wait_healthy(self.source["commit"], self.source["base"], attempts=1)
+            opener.open.assert_called_once_with("http://127.0.0.1:4321/howielog/api/health", timeout=2)
 
     @unittest.skipIf(os.name == "nt", "POSIX symlink permissions are checked in Linux CI")
     def test_current_switch_and_removal(self):

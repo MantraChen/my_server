@@ -1,0 +1,6 @@
+# Merge these rules into the EXISTING User-agent: * group in /robots.txt.
+# Keep all other services' rules. Do not replace the shared robots.txt.
+Allow: /howielog/
+Disallow: /howielog/admin
+Disallow: /howielog/api/
+Sitemap: https://dyyjs.com/howielog/sitemap.xml
