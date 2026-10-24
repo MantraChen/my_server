@@ -6,11 +6,12 @@ repo=$(mktemp -d)
 trap 'rm -rf "$repo"' EXIT
 cd "$repo"
 git init -q
+git config core.autocrlf false
 git config user.name test
 git config user.email test@example.invalid
 
 mkdir -p \
-  z_my_server/{webpage,xiaoyu/VRChat-Category,status-dashboard,news-pipeline,youtube-relay,bilibili-relay,horizon-deployment,minecraft-server} \
+  z_my_server/{webpage,xiaoyu/VRChat-Category,status-dashboard,news-pipeline,youtube-relay,bilibili-relay,horizon-deployment,minecraft-server,dev-blog} \
   deploy/server
 for path in \
   z_my_server/webpage/index.html \
@@ -21,6 +22,7 @@ for path in \
   z_my_server/bilibili-relay/app.py \
   z_my_server/horizon-deployment/install.sh \
   z_my_server/minecraft-server/server.sh \
+  z_my_server/dev-blog/source.json \
   deploy/server/deploy-my-server \
   deploy/server/VERSION; do
   printf 'initial\n' > "$path"
@@ -31,10 +33,10 @@ first=$(git rev-parse HEAD)
 
 state=$(mktemp)
 result=$("$script" "$first" "$state")
-expected=webpage,xiaoyu,status,news,youtube,bilibili,horizon,minecraft,deployment
+expected=webpage,xiaoyu,status,news,youtube,bilibili,horizon,minecraft,devblog,deployment
 [[ "$result" == "$expected" ]]
 
-for component in webpage xiaoyu status news youtube bilibili horizon minecraft deployment; do
+for component in webpage xiaoyu status news youtube bilibili horizon minecraft devblog deployment; do
   printf '%s\t%s\n' "$component" "$first" >> "$state"
 done
 printf 'changed\n' >> z_my_server/news-pipeline/app.py
@@ -55,5 +57,14 @@ rm "$state.bak"
 awk '$1 != "news"' "$state" > "$state.next"
 mv "$state.next" "$state"
 [[ "$("$script" "$third" "$state")" == news,deployment ]]
+
+printf '%s\t%s\n' news "$third" >> "$state"
+sed -i.bak "s/$second/$third/g" "$state"
+rm "$state.bak"
+printf 'new pinned blog release\n' >> z_my_server/dev-blog/source.json
+git add .
+git commit -qm devblog
+fourth=$(git rev-parse HEAD)
+[[ "$("$script" "$fourth" "$state")" == devblog ]]
 
 echo 'component selector tests passed'

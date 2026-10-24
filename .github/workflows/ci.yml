@@ -91,6 +91,40 @@ jobs:
           jq -e '(.icons | length == 3) and all(.icons[]; .type == "image/png")' \
             dist/manifest.webmanifest >/dev/null
 
+  devblog:
+    name: Dev Blog pinned upstream
+    runs-on: ubuntu-latest
+    env:
+      ASTRO_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate source pin
+        id: source
+        run: |
+          sha=$(python3 z_my_server/dev-blog/source.py)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: MantraChen/Dev-Blog
+          ref: ${{ steps.source.outputs.sha }}
+          path: .devblog-upstream
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.22.1"
+          cache: npm
+          cache-dependency-path: .devblog-upstream/package-lock.json
+      - name: Verify pinned blog on Linux
+        working-directory: .devblog-upstream
+        env:
+          PUBLIC_RELEASE_ID: ${{ steps.source.outputs.sha }}
+        run: |
+          npm ci
+          npm run verify
+          npm audit --audit-level=moderate
+      - name: Verify reverse proxy contract
+        run: node z_my_server/dev-blog/tests/smoke-proxy.mjs .devblog-upstream
+
   static:
     name: Static checks
     runs-on: ubuntu-latest
@@ -105,6 +139,7 @@ jobs:
         run: |
           deploy/tests/test-select-components.sh
           deploy/tests/test-deploy-contract.sh
+          python3 -m unittest discover -s z_my_server/dev-blog/tests -v
       - name: Validate JavaScript
         run: |
           find z_my_server/status-dashboard z_my_server/youtube-relay/chrome-extension \
@@ -113,7 +148,7 @@ jobs:
   required:
     name: CI / required
     if: always()
-    needs: [secrets, python, astro, webpage, static]
+    needs: [secrets, python, astro, webpage, devblog, static]
     runs-on: ubuntu-latest
     steps:
       - name: Require all checks
@@ -122,10 +157,12 @@ jobs:
           PYTHON_RESULT: ${{ needs.python.result }}
           ASTRO_RESULT: ${{ needs.astro.result }}
           WEBPAGE_RESULT: ${{ needs.webpage.result }}
+          DEVBLOG_RESULT: ${{ needs.devblog.result }}
           STATIC_RESULT: ${{ needs.static.result }}
         run: |
           test "$SECRETS_RESULT" = success
           test "$PYTHON_RESULT" = success
           test "$ASTRO_RESULT" = success
           test "$WEBPAGE_RESULT" = success
+          test "$DEVBLOG_RESULT" = success
           test "$STATIC_RESULT" = success

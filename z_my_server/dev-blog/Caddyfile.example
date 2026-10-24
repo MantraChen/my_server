@@ -1,0 +1,10 @@
+# Add this separate site to the existing Caddy configuration after validating it.
+# Do not replace the server's existing dyyjs.com routes or global options.
+howielog.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:4321 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

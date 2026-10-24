@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deployment contract version 5.
+# Deployment contract version 7.
 set -Eeuo pipefail
 
 base=/opt/my-server
@@ -8,7 +8,7 @@ archive_base=https://codeload.github.com/HaruharaZhang/my_server/tar.gz
 proxy=http://127.0.0.1:7890
 node_bin=/opt/dyyjs-youtube/node24-runtime/bin
 lock_file=/run/lock/my-server-deploy.lock
-allowed_components=(webpage xiaoyu status news youtube bilibili horizon minecraft deployment)
+allowed_components=(webpage xiaoyu status news youtube bilibili horizon minecraft devblog deployment)
 webpage_items=(
   manifest.webmanifest favicon.png sw.js pwa-build.json
   update.html update.js archives assets audio fonts icons licenses
@@ -64,6 +64,20 @@ sha=$2
 requested=$3
 valid_sha "$sha" || { echo "invalid commit SHA" >&2; exit 2; }
 validate_components "$requested"
+
+# New installs must be explicitly provisioned before joining automatic deploys.
+# A skipped component is not written to state, so it is retried after opt-in.
+enabled_components=()
+for component in "${components[@]}"; do
+  if [[ "$component" == devblog && ! -f /etc/dyyjs-devblog/enabled ]]; then
+    echo 'Dev Blog is disabled; provision it and create /etc/dyyjs-devblog/enabled to opt in'
+    continue
+  fi
+  enabled_components+=("$component")
+done
+(( ${#enabled_components[@]} )) || exit 0
+components=("${enabled_components[@]}")
+requested=$(IFS=,; echo "${components[*]}")
 
 exec 9>"$lock_file"
 flock -n 9 || { echo "another deployment is already running" >&2; exit 3; }
@@ -269,6 +283,12 @@ snapshot_component() {
       backup_item /var/www/dyyjs/minecraft/index.html minecraft-index
       record_unit dyyjs-minecraft.service
       ;;
+    devblog)
+      backup_item /opt/dyyjs-devblog/current devblog-link
+      backup_item /etc/systemd/system/dyyjs-devblog.service devblog-unit
+      record_unit dyyjs-devblog.service
+      # Database files are deliberately excluded from filesystem rollback.
+      ;;
     deployment) backup_item /usr/local/sbin/deploy-my-server deployment-script ;;
   esac
 }
@@ -430,6 +450,9 @@ deploy_component() {
       [[ "$(systemctl is-enabled dyyjs-minecraft.service 2>/dev/null || true)" == disabled ]]
       ! grep -qE ':(23333|25575)\b' < <(ss -ltn)
       curl_status /minecraft/ 200
+      ;;
+    devblog)
+      python3 "$release/z_my_server/dev-blog/deploy.py" "$operation" "$sha"
       ;;
     deployment)
       bash -n "$release/deploy/server/deploy-my-server"

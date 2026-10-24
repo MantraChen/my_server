@@ -41,6 +41,11 @@ z_my_server/minecraft-server/whitelist.json
 **/venv/
 **/*.log
 **/*.pid
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.db.backups/
+.devblog-upstream/
 **/*.lock
 !**/package-lock.json
 !**/Gemfile.lock

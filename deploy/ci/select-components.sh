@@ -13,7 +13,7 @@ git cat-file -e "$target^{commit}" 2>/dev/null || {
   exit 2
 }
 
-components=(webpage xiaoyu status news youtube bilibili horizon minecraft deployment)
+components=(webpage xiaoyu status news youtube bilibili horizon minecraft devblog deployment)
 
 component_paths() {
   case "$1" in
@@ -25,6 +25,7 @@ component_paths() {
     bilibili) printf '%s\n' 'z_my_server/bilibili-relay/' ;;
     horizon) printf '%s\n' 'z_my_server/horizon-deployment/' ;;
     minecraft) printf '%s\n' 'z_my_server/minecraft-server/' ;;
+    devblog) printf '%s\n' 'z_my_server/dev-blog/' ;;
     deployment)
       printf '%s\n' 'deploy/server/deploy-my-server' 'deploy/server/VERSION'
       ;;

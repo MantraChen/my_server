@@ -1,0 +1,38 @@
+[Unit]
+Description=Howie Dev Blog
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=devblog
+Group=devblog
+WorkingDirectory=/opt/dyyjs-devblog/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=4321
+Environment=DATABASE_PATH=/var/lib/dyyjs-devblog/data.db
+Environment=BACKUP_DIR=/var/lib/dyyjs-devblog/backups
+# Only ADMIN_PASSWORD_HASH is accepted here by the deployer.
+EnvironmentFile=/etc/dyyjs-devblog/env
+ExecStartPre=/opt/dyyjs-devblog/node/bin/node scripts/check-runtime.mjs
+ExecStart=/opt/dyyjs-devblog/node/bin/node dist/server/entry.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+StateDirectory=dyyjs-devblog
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dyyjs-devblog
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
